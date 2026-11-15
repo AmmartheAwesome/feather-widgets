@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feather Widgets: glass widgets for your Windows desktop</title>
+<meta name="description" content="Frosted-glass desktop widgets for Windows: clocks, weather, prayer times, to-do, notes, PC monitor and more. Light on your PC, no account, no ads.">
+<link rel="icon" href="assets/favicon-48.png">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <img src="assets/icon-256.png" alt="">
+    <a class="name" href="./">Feather Widgets</a>
+    <nav><a href="privacy/">Privacy</a></nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <span class="status reveal">Coming to the Microsoft Store</span>
+      <h1 class="reveal">Glass widgets for your <em>Windows desktop</em></h1>
+      <p class="lede reveal">Clocks, weather, prayer times, to-do lists, notes and a PC monitor, sitting on your wallpaper behind your apps. 39 widgets are free.</p>
+    </section>
+
+    <figure class="shot reveal"><img src="assets/hero.jpg" width="1600" height="900" alt="A desktop with Feather Widgets: a digital clock, a weather forecast, a to-do list and a PC monitor on a dusk landscape wallpaper."></figure>
+
+    <section class="facts">
+      <div class="fact reveal"><h2>Light on your PC</h2><p>One small process runs every widget. In our tests on one PC, five widgets used about 0.1% of the processor, and widgets rest while a window covers them.</p></div>
+      <div class="fact reveal"><h2>No account, no ads</h2><p>No sign-in, no ads, no analytics. Your notes, lists and settings stay on your PC.</p></div>
+      <div class="fact reveal"><h2>Yours to arrange</h2><p>Drag widgets anywhere, resize from any edge, and pick a font, an ink colour and a glass style for each one.</p></div>
+      <div class="fact reveal"><h2>Pro, later</h2><p>Some widgets are marked Pro. You can try each one on your desktop for 10 minutes. Buying Pro isn't available yet.</p></div>
+    </section>
+
+    <p class="note">Weather is based on data from MET Norway. Place names come from GeoNames.org (CC BY 4.0).</p>
+  </main>
+
+  <footer>
+    <div class="row">
+      <span>© 2026 Ammar Arquil</span>
+      <a href="privacy/">Privacy policy</a>
+    </div>
+  </footer>
+</div>
+<script src="assets/gsap.min.js"></script>
+<script>
+  // A short, calm entrance. Skipped entirely when the visitor prefers reduced motion.
+  if (window.gsap && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    gsap.from(".reveal", { y: 18, opacity: 0, duration: 0.7, ease: "power3.out", stagger: 0.07, clearProps: "all" });
+  }
+</script>
+</body>
+</html>
