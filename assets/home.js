@@ -1,274 +1,334 @@
-/* Feather Widgets home page. The hero is a small desktop: the app's own wallpapers (drawn with the same maths as
-   Render.SceneWallpaper), and glass widgets that show your real time, day progress and a to-do list. Like the app,
-   widgets drag freely and spring onto the nearest edge or neighbour, and they stop updating when you can't see them. */
+/* Feather Widgets home (revamp 2026-11-26). One signature: the page window scrolls up over the wallpaper, and a
+   widget it fully covers stops ticking, as the app's widgets do; the window's title bar says how many are paused.
+   Also: the island opens once on load (then on hover or tap), the group chips' pill slides like the app's, and the two
+   widgets can be dragged (mouse) and tapped to change their glass, settling onto even edges as the app's do. */
 (function () {
   'use strict';
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
-  var desk = $('#desk');
+  var hasGsap = typeof window.gsap !== 'undefined';
 
-  // ---------- smooth scrolling (off for reduced motion) ----------
+  // ---------- smooth scrolling (light), off for reduced motion ----------
   var lenis = null;
-  try {
-    if (!reduce && window.Lenis) {
-      lenis = new Lenis({ duration: 1.05, smoothWheel: true });
-      if (window.gsap) { gsap.ticker.add(function (t) { lenis.raf(t * 1000); }); gsap.ticker.lagSmoothing(0); }
-      else (function raf(t) { lenis.raf(t); requestAnimationFrame(raf); })(0);
+  if (!reduce && typeof window.Lenis === 'function') {
+    try {
+      lenis = new Lenis({ lerp: 0.14, wheelMultiplier: 0.9 });
+      (function raf(t) { lenis.raf(t); requestAnimationFrame(raf); })(performance.now());
       $$('a[href^="#"]').forEach(function (a) {
         a.addEventListener('click', function (e) {
           var id = a.getAttribute('href'); if (id.length < 2) return;
-          var el = $(id); if (!el) return;
-          e.preventDefault(); lenis.scrollTo(el, { offset: -16 }); history.replaceState(null, '', id);
+          var el = document.querySelector(id); if (!el) return;
+          e.preventDefault(); lenis.scrollTo(el, { offset: -72 });
+          history.replaceState(null, '', id);
         });
       });
+    } catch (e) { lenis = null; }
+  }
+
+  // ---------- the widgets on the wallpaper: live, and paused while covered ----------
+  var widgets = $$('[data-widget]').map(function (el) { return { el: el, paused: false }; });
+  var main = $('#main'), stage = $('#stage'), status = $('#status');
+  var fmt;
+  try { fmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }); } catch (e) { fmt = null; }
+  var wdFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'long' });
+  var dtFmt = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' });
+
+  function timeParts(d) {
+    var h = '', m = '', ap = '';
+    if (fmt && fmt.formatToParts) {
+      fmt.formatToParts(d).forEach(function (p) { if (p.type === 'hour') h = p.value; if (p.type === 'minute') m = p.value; if (p.type === 'dayPeriod') ap = p.value.toUpperCase(); });
     }
-  } catch (e) { lenis = null; }
+    if (!h) { h = String(d.getHours()); m = String(d.getMinutes()).padStart(2, '0'); }
+    return { hm: h + ':' + m, ap: ap };
+  }
+  function pct(a, b) { return Math.max(0, Math.min(100, a / b * 100)); }
 
-  // ---------- wallpapers ----------
-  var WALLS = {
-    dusk:  { sky: ['#1E2A5A', '#E59A7A'], glow: '#FFD3A6', at: [0.62, 0.6], hills: ['#5A3F78', '#3D2C5E', '#261C40'] },
-    dawn:  { sky: ['#BFD8EC', '#F6E7D4'], glow: '#FFF4DE', at: [0.72, 0.42], hills: ['#A9C3C9', '#86A9A6', '#5F8B83'], light: true },
-    ocean: { sky: ['#0D3B4F', '#2E7C8C'], glow: '#9FE0D8', at: [0.3, 0.38], hills: ['#0F5162', '#0B3E4D', '#072C38'] },
-    night: { sky: ['#0B1022', '#1A2140'], glow: '#3A4A86', at: [0.8, 0.25], hills: ['#171C33', '#12162A', '#0C0F1E'] },
-    mist:  { sky: ['#D9D3E6', '#C7D6DE'], glow: '#F3EEF7', at: [0.25, 0.3], hills: [], light: true,
-             blobs: [[0.75, 0.7, 0.5, '#B9C9E8'], [0.15, 0.85, 0.45, '#E8D2DE'], [0.55, 0.15, 0.4, '#D5E8E2']] }
-  };
-  var W = 1920, H = 1080, NS = 'http://www.w3.org/2000/svg';
-  function hillPath(i, n) {
-    var baseY = H * (0.62 + i * 0.1), amp = H * (0.07 - i * 0.012), d = 'M0 ' + H;
-    for (var px = 0; px <= W; px += 16) {
-      var t = px / W;
-      var y = baseY - amp * (Math.sin(t * 5.1 + i * 1.7) * 0.6 + Math.sin(t * 11.3 + i * 0.9) * 0.25 + Math.sin(t * 2.3 + i * 2.6) * 0.5);
-      d += ' L' + px + ' ' + y.toFixed(1);
+  function drawClock(d) {
+    var t = timeParts(d);
+    $('#hm').textContent = t.hm;
+    var ap = $('#ap'); ap.textContent = t.ap; ap.hidden = !t.ap;
+    $('#wd').textContent = wdFmt.format(d);
+    $('#dt').textContent = dtFmt.format(d);
+    $('#secbar').style.width = (d.getSeconds() / 59 * 100).toFixed(1) + '%';
+  }
+  function drawProgress(d) {
+    var dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var day = pct(d - dayStart, 864e5);
+    var dow = (d.getDay() + 6) % 7;   // Monday first
+    var week = pct(dow * 864e5 + (d - dayStart), 7 * 864e5);
+    var y0 = new Date(d.getFullYear(), 0, 1), y1 = new Date(d.getFullYear() + 1, 0, 1);
+    var year = pct(d - y0, y1 - y0);
+    [['day', day], ['week', week], ['year', year]].forEach(function (p) {
+      $('#p' + p[0]).style.width = p[1].toFixed(1) + '%';
+      $('#t' + p[0]).textContent = Math.floor(p[1]) + '%';
+    });
+  }
+  function tick() {
+    var d = new Date();
+    widgets.forEach(function (w) {
+      if (w.paused) return;
+      if (w.el.dataset.widget === 'clock') drawClock(d);
+      if (w.el.dataset.widget === 'progress') drawProgress(d);
+    });
+    var t = timeParts(d); $('#pilltime').textContent = t.hm + (t.ap ? ' ' + t.ap : '');
+  }
+  tick();
+  setTimeout(function () { tick(); setInterval(tick, 1000); }, 1000 - new Date().getMilliseconds());
+
+  // covered = the window fully covers the widget (as in the app: a widget rests only when completely hidden)
+  var lastPaused = -1;
+  function checkCover() {
+    var r = main.getBoundingClientRect();
+    stage.classList.toggle('past', r.top < innerHeight * 0.35);
+    var n = 0;
+    widgets.forEach(function (w) {
+      var b = w.el.getBoundingClientRect();
+      var visible = getComputedStyle(w.el).display !== 'none';
+      var covered = visible && r.top <= b.top + 1 && r.bottom >= b.bottom - 1;
+      if (covered !== w.paused) {
+        w.paused = covered;
+        w.el.classList.toggle('paused', covered);
+        if (!covered) tick();   // catch up at once when uncovered
+      }
+      if (covered) n++;
+    });
+    if (n !== lastPaused) {
+      lastPaused = n;
+      status.textContent = n === 0 ? 'Your widgets are running' : (n === 1 ? '1 widget paused while covered' : n + ' widgets paused while covered');
+      status.classList.toggle('paused', n > 0);
     }
-    return d + ' L' + W + ' ' + H + ' Z';
   }
-  function radial(id, cx, cy, rx, ry, color, alpha) {
-    // an ellipse-shaped glow: radius rx of the width, ry of the height (as WPF's RadialGradientBrush draws it)
-    return '<radialGradient id="' + id + '" gradientUnits="userSpaceOnUse" cx="' + cx * W + '" cy="' + cy * H + '" r="' + rx * W +
-      '" gradientTransform="translate(' + cx * W + ' ' + cy * H + ') scale(1 ' + (ry * H) / (rx * W) + ') translate(' + -cx * W + ' ' + -cy * H + ')">' +
-      '<stop offset="0" stop-color="' + color + '" stop-opacity="' + alpha + '"/><stop offset="1" stop-color="' + color + '" stop-opacity="0"/></radialGradient>';
-  }
-  function wallSvg(name) {
-    var w = WALLS[name], defs = '', body = '';
-    defs += '<linearGradient id="' + name + '-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + w.sky[0] + '"/><stop offset="1" stop-color="' + w.sky[1] + '"/></linearGradient>';
-    defs += radial(name + '-glow', w.at[0], w.at[1], 0.45, 0.6, w.glow, 0.69);
-    body += '<rect width="' + W + '" height="' + H + '" fill="url(#' + name + '-sky)"/><rect width="' + W + '" height="' + H + '" fill="url(#' + name + '-glow)"/>';
-    (w.blobs || []).forEach(function (b, i) {
-      defs += radial(name + '-b' + i, b[0], b[1], b[2], b[2] * 1.6, b[3], 0.75);
-      body += '<rect width="' + W + '" height="' + H + '" fill="url(#' + name + '-b' + i + ')"/>';
+  var coverQueued = false;
+  function queueCover() { if (coverQueued) return; coverQueued = true; requestAnimationFrame(function () { coverQueued = false; checkCover(); }); }
+  addEventListener('scroll', queueCover, { passive: true });
+  addEventListener('resize', queueCover);
+  checkCover();
+
+  // ---------- move the widgets and change their glass, as in the app ----------
+  // Mouse: drag with 1:1 tracking from where you grabbed; on release the widget springs onto the nearest even edge
+  // or gap (projected from your flick) and never settles on the headline, the header or the island. A click (under
+  // 4 px of movement) cycles the glass: Frosted, Lighter, Text only, Solid. Touch: tap only, so scrolling always works.
+  // Positions are not saved; a window resize puts them back.
+  (function () {
+    var S = window.Spring;
+    var looks = [['', 'Frosted glass'], ['g-lighter', 'Lighter glass'], ['g-text', 'Text only'], ['g-solid', 'Solid']];
+    var GAP = 16, tipEl = document.createElement('div');
+    tipEl.className = 'glass-tip'; tipEl.setAttribute('aria-live', 'polite'); stage.appendChild(tipEl);
+    var items = widgets.map(function (w) {
+      var it = { el: w.el, dx: 0, dy: 0, look: 0, sx: null, sy: null };
+      if (S) {
+        it.sx = new S.Spring({ onUpdate: function (v) { it.dx = v; apply(it); } });
+        it.sy = new S.Spring({ onUpdate: function (v) { it.dy = v; apply(it); } });
+      }
+      w.el.tabIndex = 0;
+      w.el.setAttribute('role', 'button');
+      w.el.title = finePointer ? 'Drag to move. Click to change the glass.' : 'Tap to change the glass.';
+      return it;
     });
-    w.hills.forEach(function (c, i) { body += '<path d="' + hillPath(i) + '" fill="' + c + '"/>'; });
-    return '<svg xmlns="' + NS + '" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid slice" data-wall="' + name + '"><defs>' + defs + '</defs>' + body + '</svg>';
-  }
-  var walls = $('#walls'), current = 'dusk';
-  walls.innerHTML = Object.keys(WALLS).map(wallSvg).join('');
-  $('svg[data-wall="dusk"]', walls).classList.add('on');
+    function apply(it) { it.el.style.transform = (it.dx || it.dy) ? 'translate3d(' + it.dx.toFixed(2) + 'px,' + it.dy.toFixed(2) + 'px,0)' : ''; queueCover(); }
 
-  function setWall(name, fromUser) {
-    if (name === current || !WALLS[name]) return;
-    var next = $('svg[data-wall="' + name + '"]', walls), prev = $('svg[data-wall="' + current + '"]', walls);
-    current = name;
-    $$('.w-walls button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.wall === name)); });
-    desk.classList.toggle('light', !!WALLS[name].light);
-    walls.appendChild(next);   // on top of the old one, so the crossfade never shows a gap
-    if (window.gsap && !reduce) {
-      gsap.killTweensOf(next);
-      gsap.fromTo(next, { opacity: 0 }, { opacity: 1, duration: 0.6, ease: 'power2.out', onComplete: function () { if (prev !== next) prev.classList.remove('on'); } });
-      next.classList.add('on');
-    } else { next.classList.add('on'); next.style.opacity = ''; prev.classList.remove('on'); }
-    if (fromUser) tick('wall');
-  }
-  $$('.w-walls button').forEach(function (b) { b.addEventListener('click', function () { setWall(b.dataset.wall, true); }); });
+    function cycle(it) {
+      var old = looks[it.look][0];
+      it.look = (it.look + 1) % looks.length; markHinted();
+      if (old) it.el.classList.remove(old);
+      if (looks[it.look][0]) it.el.classList.add(looks[it.look][0]);
+      showTip(it, looks[it.look][1]);
+    }
+    function showTip(it, text, secs) {
+      tipEl.textContent = text;
+      var r = it.el.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+      var below = r.bottom + 44 < Math.min(innerHeight, pill.getBoundingClientRect().top - 8);
+      tipEl.style.left = (r.left - sr.left + r.width / 2) + 'px';
+      tipEl.style.top = (below ? r.bottom - sr.top + 10 : r.top - sr.top - 40) + 'px';
+      tipEl.style.translate = '-50% 0';
+      if (hasGsap && !reduce) {
+        gsap.killTweensOf(tipEl);
+        gsap.fromTo(tipEl, { opacity: 0, y: below ? -4 : 4 }, { opacity: 1, y: 0, duration: 0.16, ease: 'power2.out' });
+        gsap.to(tipEl, { opacity: 0, duration: 0.3, delay: secs || 1.1, ease: 'power1.in' });
+      } else { tipEl.style.opacity = 1; clearTimeout(tipEl._t); tipEl._t = setTimeout(function () { tipEl.style.opacity = 0; }, ((secs || 1.1) + 0.3) * 1000); }
+    }
+    function hideTip() { if (hasGsap) { gsap.killTweensOf(tipEl); gsap.to(tipEl, { opacity: 0, duration: 0.15 }); } else tipEl.style.opacity = 0; }
 
-  // ---------- to-do: the tasks tick themselves when you do them ----------
-  var isTouch = matchMedia('(hover: none)').matches;
-  if (isTouch) $('.task-drag').textContent = 'Scroll through the widgets';
-  function left() {
-    var n = $$('.w-todo input').filter(function (i) { return !i.checked; }).length;
-    $('#todo-left').textContent = n ? n + ' left' : 'All done';
-  }
-  function tick(task) { var i = $('.w-todo input[data-task="' + task + '"]'); if (i && !i.checked) { i.checked = true; left(); } }
-  $$('.w-todo input').forEach(function (i) { i.addEventListener('change', left); });
-  $$('[data-get]').forEach(function (a) { a.addEventListener('click', function () { tick('get'); }); });
-  if (isTouch && 'IntersectionObserver' in window) {
-    new IntersectionObserver(function (es, o) { es.forEach(function (e) { if (e.isIntersecting) { tick('drag'); o.disconnect(); } }); }, { threshold: 0.3 }).observe($('#widgets'));
-  }
+    // one hint, once per visitor, so people find out the widgets move: on the first hover (mouse) or a few seconds
+    // after load (touch); gone after the first use or 6 s
+    var hinted = false;
+    try { hinted = localStorage.getItem('fw-widget-hint') === '1'; } catch (e) {}
+    function markHinted() { hinted = true; try { localStorage.setItem('fw-widget-hint', '1'); } catch (e) {} }
+    var hintItem = items[0];
+    if (hintItem && !hinted) {
+      if (finePointer) {
+        hintItem.el.addEventListener('mouseenter', function once() {
+          hintItem.el.removeEventListener('mouseenter', once);
+          if (hinted || hintItem.el.classList.contains('paused')) return;
+          markHinted(); showTip(hintItem, 'Drag it, or click to change its glass', 6);
+        });
+      } else {
+        setTimeout(function () {
+          if (hinted || getComputedStyle(hintItem.el).display === 'none' || hintItem.el.classList.contains('paused')) return;
+          markHinted(); showTip(hintItem, 'Tap to change its glass', 3);
+        }, reduce ? 800 : 4400);   // after the island's first opening has closed
+      }
+    }
 
-  // ---------- live clock and progress (only while the hero is on screen and the tab is visible) ----------
-  var timer = 0, inView = true;
-  var fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-  var fmtWd = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
-  var fmtMd = new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric' });
-  function pct(v) { return (v * 100).toFixed(v < 0.1 ? 1 : 0) + '%'; }
-  function render() {
-    var now = new Date();
-    var parts = fmtTime.formatToParts(now), t = '', ap = '';
-    parts.forEach(function (p) { if (p.type === 'dayPeriod') ap = p.value; else if (p.type !== 'literal' || !ap) t += p.value; });
-    $('#clk-t').textContent = t.trim();
-    $('#clk-ap').textContent = ap;
-    $('#clk-wd').textContent = fmtWd.format(now);
-    $('#clk-md').textContent = fmtMd.format(now);
-    var s = now.getSeconds();
-    $('#clk-s').textContent = (s < 10 ? '0' : '') + s;
-    $('#clk-bar').style.width = (s / 59 * 100) + '%';
-    var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    var day = (now - start) / 864e5;
-    var wk = ((now.getDay() + 6) % 7 + day) / 7;   // weeks start on Monday
-    var y0 = new Date(now.getFullYear(), 0, 1), y1 = new Date(now.getFullYear() + 1, 0, 1);
-    var yr = (now - y0) / (y1 - y0);
-    [['day', day], ['week', wk], ['year', yr]].forEach(function (p) {
-      $('#p-' + p[0]).style.width = (p[1] * 100).toFixed(2) + '%';
-      $('#p-' + p[0] + '-v').textContent = pct(p[1]);
-    });
-  }
-  function schedule() {
-    clearTimeout(timer);
-    if (!inView || document.hidden) return;
-    render();
-    timer = setTimeout(schedule, 1000 - (Date.now() % 1000) + 10);
-  }
-  document.addEventListener('visibilitychange', schedule);
-  if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { inView = es[0].isIntersecting; schedule(); }).observe(desk);
-  schedule();
-
-  // ---------- layout: widgets float on wide screens, stack on small ones ----------
-  var floating = matchMedia('(min-width: 1000px) and (min-height: 600px)');
-  var widgets = $$('.w', desk), pos = new Map(), z = 1;
-  var GAP = 16;
-  function margin() { return Math.max(24, Math.min(64, desk.clientWidth * 0.045)); }
-  function layout() {
-    widgets.forEach(function (w) { w.style.left = w.style.top = ''; w.style.transform = ''; w.style.zIndex = ''; });
-    pos.clear();
-    if (!floating.matches) return;
-    var dw = desk.clientWidth, dh = desk.clientHeight, m = margin(), top = 96;
-    var title = $('.w-title', desk), clock = $('.w-clock', desk), todo = $('.w-todo', desk), prog = $('.w-prog', desk), wp = $('.w-walls', desk);
-    function place(el, x, y) { el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px'; pos.set(el, { x: 0, y: 0 }); }
-    var th = title.offsetHeight;
-    place(title, m, Math.max(top, (dh - th) / 2 - 10));
-    place(clock, dw - m - clock.offsetWidth, top);
-    place(todo, dw - m - clock.offsetWidth, top + clock.offsetHeight + GAP);
-    place(prog, dw - m - prog.offsetWidth, top + clock.offsetHeight + GAP);
-    place(wp, dw - m - wp.offsetWidth, dh - m - wp.offsetHeight);
-  }
-
-  // ---------- drag and snap (mouse and pen; touch scrolls the page) ----------
-  function rectOf(el) { var r = el.getBoundingClientRect(), d = desk.getBoundingClientRect(); return { x: r.left - d.left, y: r.top - d.top, w: r.width, h: r.height }; }
-  function snapAxis(v, size, lo, hi, guides) {
-    // nearest guide within reach, like the app's SnapEdges; otherwise stay put, kept on screen
-    var best = v, dist = 40;
-    guides.forEach(function (g) { [g, g - size].forEach(function (c) { var dd = Math.abs(c - v); if (dd < dist) { dist = dd; best = c; } }); });
-    return Math.max(lo, Math.min(hi - size, best));
-  }
-  widgets.forEach(function (el) {
-    if (!window.Spring) return;
-    var sx = new Spring.Spring({ onUpdate: function (v) { pos.get(el) && (pos.get(el).x = v); apply(); } });
-    var sy = new Spring.Spring({ onUpdate: function (v) { pos.get(el) && (pos.get(el).y = v); apply(); } });
-    var vx = new Spring.VelocityTracker(), vy = new Spring.VelocityTracker();
-    var grab = null, moved = false, startX = 0, startY = 0;
-    function apply() { var p = pos.get(el); if (p) el.style.transform = 'translate(' + p.x + 'px,' + p.y + 'px)'; }
-    el.addEventListener('pointerenter', function () { el.classList.toggle('grab', floating.matches); });
-    el.addEventListener('pointerdown', function (e) {
-      if (!floating.matches || e.pointerType === 'touch' || e.button !== 0) return;
-      if (e.target.closest('a, button, input, label')) return;
-      var p = pos.get(el); if (!p) return;
-      sx.stop(); sy.stop(); vx.reset(); vy.reset();
-      grab = { x: e.clientX - p.x, y: e.clientY - p.y }; moved = false; startX = e.clientX; startY = e.clientY;
-      el.style.zIndex = ++z;
-      el.setPointerCapture(e.pointerId);
-    });
-    el.addEventListener('pointermove', function (e) {
-      if (!grab) return;
-      if (!moved && Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) < 4) return;
-      if (!moved) { moved = true; el.classList.add('dragging'); }
-      var x = e.clientX - grab.x, y = e.clientY - grab.y;
-      sx.set(x); sy.set(y); vx.add(x); vy.add(y);
-    });
-    function end() {
-      if (!grab) return;
-      grab = null; el.classList.remove('dragging');
-      if (!moved) return;
-      var r = rectOf(el), p = pos.get(el), m = margin();
-      var vX = vx.velocity(), vY = vy.velocity();
-      var px = r.x + Spring.project(vX, 0.99), py = r.y + Spring.project(vY, 0.99);
-      var gx = [m, desk.clientWidth - m], gy = [Math.max(m, 88), desk.clientHeight - m];
-      widgets.forEach(function (o) {
-        if (o === el) return;
-        var q = rectOf(o);
-        gx.push(q.x - GAP, q.x + q.w + GAP, q.x, q.x + q.w);
-        gy.push(q.y - GAP, q.y + q.h + GAP, q.y, q.y + q.h);
+    // where a widget may rest: inside the edge margin, clear of the header, the headline block, the island and the
+    // other widget (with the app's even gap)
+    function rects(it) {
+      var out = [], pad = function (r, p) { return { l: r.left - p, t: r.top - p, r: r.right + p, b: r.bottom + p }; };
+      var top = $('.top'), hero = $('.hero');
+      if (top) out.push(pad(top.getBoundingClientRect(), 8));
+      if (hero && !stage.classList.contains('past')) out.push(pad(hero.getBoundingClientRect(), GAP));
+      var pr = pill.getBoundingClientRect(); out.push({ l: pr.left - 24, t: pr.top - GAP, r: pr.right + 24, b: innerHeight });
+      items.forEach(function (o) { if (o !== it && getComputedStyle(o.el).display !== 'none') out.push(pad(o.el.getBoundingClientRect(), GAP)); });
+      return out;
+    }
+    function free(x, y, w, h, block) {
+      for (var i = 0; i < block.length; i++) { var b = block[i]; if (x < b.r - 0.5 && x + w > b.l + 0.5 && y < b.b - 0.5 && y + h > b.t + 0.5) return false; }
+      return true;
+    }
+    function settle(it, vx, vy) {
+      var r = it.el.getBoundingClientRect(), w = r.width, h = r.height;
+      var bx = r.left - it.dx, by = r.top - it.dy;               // where the widget sits with no offset
+      var m = $('.top').getBoundingClientRect().left;              // the page's edge margin
+      var minX = m, maxX = innerWidth - m - w, minY = m, maxY = innerHeight - m - h;
+      var px = r.left + (S ? S.project(vx, 0.99) : 0), py = r.top + (S ? S.project(vy, 0.99) : 0);
+      px = Math.max(minX, Math.min(maxX, px)); py = Math.max(minY, Math.min(maxY, py));
+      var block = rects(it);
+      // guides: the edge margin, and an even gap beside (or alignment with) everything in the way
+      var gx = [minX, maxX], gy = [minY, maxY];
+      block.forEach(function (b) { gx.push(b.l - w, b.r, b.l + GAP, b.r - GAP - w); gy.push(b.t - h, b.b, b.t + GAP, b.b - GAP - h); });
+      function snap(v, list) { var best = v, bd = 28; list.forEach(function (g) { var d = Math.abs(g - v); if (d < bd) { bd = d; best = g; } }); return best; }
+      var xs = [snap(px, gx)].concat(gx), ys = [snap(py, gy)].concat(gy);
+      var best = null, bd = Infinity;
+      xs.forEach(function (x) {
+        ys.forEach(function (y) {
+          if (x < minX - 0.5 || x > maxX + 0.5 || y < minY - 0.5 || y > maxY + 0.5) return;
+          if (!free(x, y, w, h, block)) return;
+          var d = Math.hypot(x - px, y - py);
+          if (d < bd) { bd = d; best = { x: x, y: y }; }
+        });
       });
-      var nx = snapAxis(px, r.w, m, desk.clientWidth - m, gx), ny = snapAxis(py, r.h, Math.min(88, m), desk.clientHeight - m, gy);
-      sx.to(p.x + (nx - r.x), { velocity: vX, damping: 0.86, response: 0.42 });
-      sy.to(p.y + (ny - r.y), { velocity: vY, damping: 0.86, response: 0.42 });
-      tick('drag');
+      if (!best) best = { x: bx, y: by };                          // nowhere free: back home
+      var damping = Math.hypot(vx, vy) > 900 ? 0.82 : 1;           // a little bounce only after a flick
+      if (S) { it.sx.to(best.x - bx, { velocity: vx, damping: damping, response: 0.4 }); it.sy.to(best.y - by, { velocity: vy, damping: damping, response: 0.4 }); }
+      else { it.dx = best.x - bx; it.dy = best.y - by; apply(it); }
     }
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
-    el.addEventListener('lostpointercapture', end);
-  });
 
-  var rt = 0;
-  addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(layout, 120); });
-  floating.addEventListener ? floating.addEventListener('change', layout) : floating.addListener(layout);
+    items.forEach(function (it) {
+      var el = it.el, id = null, sx0 = 0, sy0 = 0, ox = 0, oy = 0, moved = false, mouse = false;
+      var tx = S ? new S.VelocityTracker() : null, ty = S ? new S.VelocityTracker() : null;
+      el.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0 || id !== null) return;
+        mouse = e.pointerType === 'mouse' && finePointer;
+        id = e.pointerId; sx0 = e.clientX; sy0 = e.clientY; moved = false;
+        el.classList.add('pressed');
+        if (mouse) {
+          e.preventDefault();
+          el.setPointerCapture(id);
+          if (S) { it.sx.stop(); it.sy.stop(); tx.reset(); ty.reset(); tx.add(it.dx); ty.add(it.dy); }   // grab it mid-flight
+          ox = it.dx; oy = it.dy;
+        }
+      });
+      el.addEventListener('pointermove', function (e) {
+        if (e.pointerId !== id) return;
+        var mx = e.clientX - sx0, my = e.clientY - sy0;
+        if (!moved && Math.hypot(mx, my) >= 4) { moved = true; el.classList.remove('pressed'); if (mouse) { el.classList.add('dragging'); hideTip(); markHinted(); } }
+        if (!mouse || !moved) return;
+        it.dx = ox + mx; it.dy = oy + my; apply(it);
+        if (S) { tx.add(it.dx); ty.add(it.dy); }
+      });
+      function end(e, cancelled) {
+        if (e.pointerId !== id) return;
+        id = null;
+        el.classList.remove('pressed', 'dragging');
+        if (!moved && !cancelled) { cycle(it); return; }
+        if (mouse && moved) settle(it, S ? tx.velocity() : 0, S ? ty.velocity() : 0);
+      }
+      el.addEventListener('pointerup', function (e) { end(e, false); });
+      el.addEventListener('pointercancel', function (e) { end(e, true); });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cycle(it); } });
+    });
+    addEventListener('resize', function () { items.forEach(function (it) { if (it.sx) { it.sx.set(0); it.sy.set(0); } else { it.dx = it.dy = 0; apply(it); } }); });
+  })();
 
-  // ---------- screenshot tabs ----------
-  var SHOTS = [
-    ['1-hero', 'A Glass Digital clock, Weather, To-do and PC Monitor on one desktop.', 'A desktop with a digital clock, a weather forecast for Colombo, a to-do list and a PC monitor.'],
-    ['2-clocks', 'Analog, Rings, Dot Matrix, Seven Segment, Text Clock and Minimal. Flip, Word Clock, Nixie Tube and more come with Pro.', 'Six clock widgets: analog, rings, dot matrix, seven segment, a clock in words and a minimal clock.'],
-    ['3-weather', 'Weather at three sizes, from MET Norway forecasts, refreshed every 30 minutes to 3 hours.', 'The Weather widget at small, wide and large sizes, with hourly and daily forecasts.'],
-    ['4-lists', 'To-do, Notes, Habits, a Focus Timer and Word of the Day.', 'A to-do list, notes, a weekly habit tracker, a 25-minute focus timer and a word of the day.'],
-    ['5-system', 'PC Monitor, Network Speed, Disks, Battery and System Info.', 'System widgets showing processor, graphics, memory and network use, disks, battery and PC details.'],
-    ['6-style', 'The same clock with three fonts, text colours and glass styles. Every widget can be styled like this.', 'Three copies of the Glass Digital clock in different fonts, colours and glass.'],
-    ['8-wellbeing', 'Screen Time, Eye Rest, Breathe and Water, with Calculator and Day Progress.', 'Wellbeing widgets: screen time today, an eye rest reminder, a breathing guide and a water counter, with a calculator and day progress bars.'],
-    ['9-prayer', 'Prayer Times is free. Hijri & Date and Tasbih come with Pro.', 'Prayer times with a countdown to Dhuhr, a Hijri date widget and a tasbih counter.'],
-    ['7-gallery', 'The gallery shows every widget live. Drag one out onto your desktop, or click it to customise it first.', 'The Feather Widgets gallery window showing clock widgets.']
-  ];
-  // tab order on the page: Everyday, Clocks, Weather, Lists, PC, Wellbeing, Prayer, Style, Gallery
-  var ORDER = [0, 1, 2, 3, 4, 6, 7, 5, 8];
-  var tabs = $$('.tabs [role="tab"]'), img = $('#shot-img'), cap = $('#shot-cap'), panel = $('#shot');
-  SHOTS.forEach(function (s) { var i = new Image(); i.decoding = 'async'; i.dataset.k = s[0]; });
-  function show(ti, focus) {
-    var s = SHOTS[ORDER[ti]];
-    tabs.forEach(function (t, i) { t.setAttribute('aria-selected', String(i === ti)); t.tabIndex = i === ti ? 0 : -1; });
-    panel.setAttribute('aria-labelledby', tabs[ti].id);
-    if (focus) tabs[ti].focus();
-    var src = 'assets/shots/' + s[0] + '-1600.webp', set = 'assets/shots/' + s[0] + '-800.webp 800w, ' + src + ' 1600w';
-    cap.textContent = s[1];
-    if (img.dataset.k === s[0]) return;
-    img.dataset.k = s[0];
-    var next = new Image(); next.srcset = set; next.sizes = img.sizes; next.src = src;
-    function swap() {
-      img.srcset = set; img.src = src; img.alt = s[2];
-      if (window.gsap && !reduce) gsap.fromTo(img, { opacity: 0.35 }, { opacity: 1, duration: 0.35, ease: 'power2.out' });
-    }
-    if (next.decode) next.decode().then(swap, swap); else swap();
+  // ---------- the island ----------
+  var island = $('#island'), pill = $('#pill'), panel = $('#panel');
+  var open = false, closeTimer = 0, openedAt = 0;
+  function setOpen(on) {
+    if (on === open) return;
+    open = on;
+    if (on) openedAt = performance.now();
+    clearTimeout(closeTimer);
+    pill.setAttribute('aria-expanded', String(on));
+    if (hasGsap && !reduce) {
+      gsap.killTweensOf(panel);
+      if (on) {
+        island.classList.add('open');
+        gsap.fromTo(panel, { scaleX: 0.42, scaleY: 0.12, opacity: 0.4 }, { scaleX: 1, scaleY: 1, opacity: 1, duration: 0.28, ease: 'power3.out' });
+      } else {
+        gsap.to(panel, { scaleX: 0.42, scaleY: 0.12, opacity: 0, duration: 0.16, ease: 'power2.in', onComplete: function () { island.classList.remove('open'); gsap.set(panel, { clearProps: 'transform,opacity' }); } });
+      }
+    } else island.classList.toggle('open', on);
   }
-  tabs.forEach(function (t, i) {
-    t.addEventListener('click', function () { show(i); });
-    t.addEventListener('keydown', function (e) {
-      var k = e.key, n = tabs.length, j = k === 'ArrowRight' ? (i + 1) % n : k === 'ArrowLeft' ? (i - 1 + n) % n : k === 'Home' ? 0 : k === 'End' ? n - 1 : -1;
-      if (j < 0) return; e.preventDefault(); show(j, true);
+  // a click just after hovering opened it keeps it open (the hover and the click are one gesture)
+  pill.addEventListener('click', function () { if (open && performance.now() - openedAt < 600) return; setOpen(!open); });
+  if (finePointer) {
+    island.addEventListener('mouseenter', function () { clearTimeout(closeTimer); setOpen(true); });
+    island.addEventListener('mouseleave', function () { closeTimer = setTimeout(function () { setOpen(false); }, 250); });
+  }
+  panel.addEventListener('click', function () { if (!finePointer) setOpen(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && open) { setOpen(false); pill.focus(); } });
+  document.addEventListener('pointerdown', function (e) { if (open && !island.contains(e.target)) setOpen(false); });
+  if (!reduce) setTimeout(function () { if (!open) { setOpen(true); closeTimer = setTimeout(function () { setOpen(false); }, 3200); } }, 900);
+
+  // the calendar page: this month, Sunday first, today marked
+  (function () {
+    var d = new Date(), y = d.getFullYear(), m = d.getMonth();
+    var monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(d);
+    $('#cdname').textContent = wdFmt.format(d);
+    $('#cday').textContent = d.getDate();
+    $('#cmonth').textContent = monthName + ' ' + y;
+    $('#cmtitle').textContent = monthName + ' ' + y;
+    var t = new Date(Date.UTC(y, m, d.getDate())); var dn = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dn);
+    var wk = Math.ceil(((t - new Date(Date.UTC(t.getUTCFullYear(), 0, 1))) / 864e5 + 1) / 7);
+    $('#cweek').textContent = 'Week ' + wk;
+    var grid = $('#cgrid'), html = '';
+    'SMTWTFS'.split('').forEach(function (c) { html += '<span class="h">' + c + '</span>'; });
+    var first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate(), prev = new Date(y, m, 0).getDate();
+    for (var i = 0; i < 42; i++) {
+      var n = i - first + 1, cls = '', v = n;
+      if (n < 1) { v = prev + n; cls = 'out'; } else if (n > days) { v = n - days; cls = 'out'; } else if (n === d.getDate()) cls = 'now';
+      html += '<span' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</span>';
+    }
+    grid.innerHTML = html;
+  })();
+
+  // ---------- the group chips: one pill slides to the chip you pick (0.26 s, quint ease, as in the app) ----------
+  var chips = $$('.chips [role="tab"]'), pillEl = $('#chippill'), groups = $$('#list > div');
+  function placePill(btn, animate) {
+    var x = btn.offsetLeft, w = btn.offsetWidth;
+    if (animate && hasGsap && !reduce) gsap.to(pillEl, { x: x, width: w, duration: 0.26, ease: 'power4.out', overwrite: true });   // quint, as the app
+    else if (hasGsap) gsap.set(pillEl, { x: x, width: w });
+    else { pillEl.style.transform = 'translateX(' + x + 'px)'; pillEl.style.width = w + 'px'; }
+  }
+  function pick(i, focus) {
+    var g = chips[i].dataset.g;
+    chips.forEach(function (c, j) { c.setAttribute('aria-selected', String(i === j)); c.tabIndex = i === j ? 0 : -1; });
+    groups.forEach(function (el) { el.hidden = g !== 'all' && el.dataset.g !== g; });
+    placePill(chips[i], true);
+    if (focus) chips[i].focus();
+  }
+  chips.forEach(function (c, i) {
+    c.addEventListener('click', function () { pick(i); });
+    c.addEventListener('keydown', function (e) {
+      var n = chips.length, k = e.key;
+      var j = k === 'ArrowRight' ? (i + 1) % n : k === 'ArrowLeft' ? (i - 1 + n) % n : k === 'Home' ? 0 : k === 'End' ? n - 1 : -1;
+      if (j >= 0) { e.preventDefault(); pick(j, true); }
     });
   });
-  img.dataset.k = SHOTS[0][0]; img.alt = SHOTS[0][2]; cap.textContent = SHOTS[0][1];
-  // warm the other screenshots once the page is idle, so tab switches are instant
-  (window.requestIdleCallback || function (f) { setTimeout(f, 1500); })(function () {
-    SHOTS.forEach(function (s) { var i = new Image(); i.src = 'assets/shots/' + s[0] + (innerWidth > 900 ? '-1600' : '-800') + '.webp'; });
-  });
-
-  // ---------- one entrance: the widgets settle onto the wallpaper ----------
-  function boot() {
-    layout();
-    if (!window.gsap || reduce) return;
-    var ws = widgets.slice();
-    gsap.from(walls, { opacity: 0, duration: 0.5, ease: 'power1.out' });
-    gsap.from(ws, { opacity: 0, y: 14, duration: 0.7, ease: 'power3.out', stagger: 0.06, delay: 0.08,
-      clearProps: 'opacity', onUpdate: function () {}, onComplete: function () { ws.forEach(function (w) { var p = pos.get(w); w.style.transform = p ? 'translate(' + p.x + 'px,' + p.y + 'px)' : ''; }); } });
-  }
-  if (document.fonts && document.fonts.ready) {
-    var done = false, go = function () { if (!done) { done = true; boot(); } };
-    document.fonts.ready.then(go); setTimeout(go, 1500);
-  } else boot();
+  function snapPill() { var on = chips.filter(function (c) { return c.getAttribute('aria-selected') === 'true'; })[0]; if (on) placePill(on, false); }
+  snapPill();
+  addEventListener('resize', snapPill);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(snapPill);
 })();
