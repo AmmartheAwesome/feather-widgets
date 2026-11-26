@@ -85,6 +85,26 @@
     <a class="get small" href="https://apps.microsoft.com/detail/9N2967DGNJJS" data-get>Get it free</a>
   </div>
 
+  <!-- the demo: a silent 21.5 s loop drawn from the app's own renders (promo/site-demo in the app repo); plays only while in view,
+       never on its own under reduced motion -->
+  <section class="sec" id="demo" aria-labelledby="h-demo">
+    <h2 id="h-demo">See it in 20 seconds</h2>
+    <p class="lead">Open the gallery from the tray, drag a widget onto your desktop or style one first, then move it and resize it.</p>
+    <figure class="demo">
+      <div class="demo-frame">
+        <video id="demo-video" muted playsinline loop preload="none" width="1280" height="720" poster="assets/demo-poster.webp" aria-describedby="demo-desc">
+          <source src="assets/demo.mp4" type="video/mp4">
+        </video>
+        <button class="demo-toggle is-paused" id="demo-toggle" type="button" aria-label="Play the video">
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        </button>
+      </div>
+      <figcaption>Weather and PC stats show sample values. The wallpaper was made for this site.</figcaption>
+      <p class="vh" id="demo-desc">A Windows desktop over a calm sea at dusk. From the tray icon the widget gallery opens. A calendar is dragged out of it onto the desktop. Glass Digital is opened, its size and glass looked at, and it is added where its preview was, then dragged to the top left, where it snaps into line. Last, the weather widget is resized wider and taller from its edges.</p>
+    </figure>
+  </section>
+
   <section class="sec" id="island-sec" aria-labelledby="h-island">
     <div class="split">
       <div>

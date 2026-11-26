@@ -327,6 +327,41 @@
       if (j >= 0) { e.preventDefault(); pick(j, true); }
     });
   });
+  // ---------- the demo video: loads and plays only while on screen; never starts on its own under reduced motion ----------
+  (function () {
+    var vid = $('#demo-video'), tog = $('#demo-toggle');
+    if (!vid || !tog) return;
+    var held = reduce;                 // true once the visitor pauses it (or under reduced motion, until they press play)
+    var inView = false;
+    function show() {
+      var p = vid.paused;
+      tog.classList.toggle('is-paused', p);
+      tog.setAttribute('aria-label', p ? 'Play the video' : 'Pause the video');
+    }
+    function play() { var r = vid.play(); if (r && r.catch) r.catch(function () { show(); }); }
+    function toggle() {
+      if (vid.paused) { held = false; play(); } else { held = true; vid.pause(); }
+    }
+    tog.addEventListener('click', toggle);
+    vid.addEventListener('click', toggle);
+    vid.addEventListener('play', show);
+    vid.addEventListener('pause', show);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (es) {
+        es.forEach(function (e) {
+          inView = e.isIntersecting;
+          if (inView && !held) play();
+          else if (!inView && !vid.paused) vid.pause();
+        });
+      }, { threshold: 0.4 }).observe(vid);
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && !vid.paused) vid.pause();
+      else if (!document.hidden && inView && !held) play();
+    });
+    show();
+  })();
+
   function snapPill() { var on = chips.filter(function (c) { return c.getAttribute('aria-selected') === 'true'; })[0]; if (on) placePill(on, false); }
   snapPill();
   addEventListener('resize', snapPill);
