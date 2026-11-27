@@ -16,6 +16,8 @@
   --gutter: clamp(16px, 4vw, 56px);
   --max: 1120px;
   --quint: cubic-bezier(.22, 1, .36, 1);
+  /* the two wallpaper widgets: 444 px when there is room beside the hero text (at least 24 px apart), never under 404 */
+  --wcard: clamp(404px, calc(100vw - 2 * var(--gutter) - 600px), 444px);
 }
 
 * { box-sizing: border-box; }
@@ -60,6 +62,10 @@ p { margin: 0 0 1em; text-wrap: pretty; }
 @media (min-width: 761px) { .wall { overflow: hidden; } .wall img { height: 125%; object-position: 70% 0; } }
 .top { position: absolute; left: var(--gutter); right: var(--gutter); top: 20px; display: flex; align-items: center; justify-content: space-between; z-index: 3; }
 .mark { color: var(--text); display: block; }
+.top-actions { display: flex; align-items: center; gap: 4px; }
+.toplink { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; font-size: 15px; font-weight: 500; color: var(--text);
+  text-decoration: none; text-shadow: 0 1px 10px rgb(0 0 0 / .45); }
+@media (hover: hover) and (pointer: fine) { .toplink:hover { text-decoration: underline; text-decoration-color: rgb(242 242 244 / .6); } }
 .top .mark svg { height: 58px; width: auto; }
 .hero { position: absolute; left: var(--gutter); top: clamp(108px, 18vh, 190px); width: min(560px, 100% - 2 * var(--gutter)); z-index: 3; transition: opacity .3s, visibility .3s; }
 .hero h1 { font-size: clamp(36px, 5vw, 64px); line-height: 1.04; margin-bottom: 18px; }
@@ -76,7 +82,7 @@ p { margin: 0 0 1em; text-wrap: pretty; }
   box-shadow: inset 0 1px 0 rgb(255 255 255 / .18);
   font-variant-numeric: tabular-nums;
 }
-.w-clock { right: var(--gutter); top: clamp(108px, 18vh, 190px); width: 404px; height: 160px; gap: 16px; display: flex; align-items: center; justify-content: space-between; padding: 0 26px 0 28px; }
+.w-clock { right: var(--gutter); top: clamp(108px, 18vh, 190px); width: var(--wcard); height: 160px; gap: 16px; display: flex; align-items: center; justify-content: space-between; padding: 0 26px 0 28px; }
 .clock-time { display: flex; align-items: flex-start; gap: 6px; flex: none; }
 .clock-time #hm { font-size: 72px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
 .clock-time .ap { font-size: 17px; font-weight: 600; margin-top: 6px; opacity: .9; }
@@ -85,7 +91,7 @@ p { margin: 0 0 1em; text-wrap: pretty; }
 .clock-side .dt { font-size: 23px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
 .secs { width: 132px; height: 3px; border-radius: 2px; background: rgb(255 255 255 / .22); margin-top: 10px; overflow: hidden; }
 .secs i { display: block; height: 100%; width: 0; background: #fff; border-radius: 2px; }
-.w-prog { right: var(--gutter); top: calc(clamp(108px, 18vh, 190px) + 176px); width: 404px; padding: 18px 22px; display: grid; gap: 10px; }
+.w-prog { right: var(--gutter); top: calc(clamp(108px, 18vh, 190px) + 176px); width: var(--wcard); padding: 18px 22px; display: grid; gap: 10px; }
 .w-prog .row { display: grid; grid-template-columns: 52px 1fr 48px; align-items: center; gap: 12px; font-size: 15px; }
 .w-prog .bar { height: 6px; border-radius: 3px; background: rgb(255 255 255 / .2); overflow: hidden; }
 .w-prog .bar i { display: block; height: 100%; width: 0; background: #fff; border-radius: 3px; }
@@ -239,6 +245,12 @@ code { font-size: .92em; background: var(--raise); padding: 1px 6px; border-radi
   .w-prog { display: none; }
   .titlebar nav { display: none; }
 }
+/* between the phone layout and the side-by-side one the clock would sit on the hero text: it moves under it, bottom left,
+   as on phones, and steps aside on short windows where it would still touch the text */
+@media (min-width: 761px) and (max-width: 1100px) {
+  .w-clock { left: var(--gutter); right: auto; top: auto; bottom: 76px; width: 404px; }
+}
+@media (min-width: 761px) and (max-width: 1100px) and (max-height: 759px) { .w-clock { display: none; } }
 @media (max-width: 900px) {
   .split, .split.rev { grid-template-columns: 1fr; gap: 28px; }
   .split.rev img { order: 2; }

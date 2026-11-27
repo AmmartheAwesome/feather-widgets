@@ -52,7 +52,33 @@
     $('#wd').textContent = wdFmt.format(d);
     $('#dt').textContent = dtFmt.format(d);
     $('#secbar').style.width = (d.getSeconds() / 59 * 100).toFixed(1) + '%';
+    fitClock(false);
   }
+  // The card keeps its size, as the app's widgets do, so the text fits itself to the card: "12:58" with
+  // "Wednesday, September 30" is about 50 px wider than "7:37" with "Thursday, November 26". Measured only when the
+  // words or the card's width change (once a minute at most), never every second.
+  var fitKey = '';
+  function fitClock(force) {
+    var card = $('.w-clock'), hm = $('#hm'), dt = $('#dt'), time = $('.clock-time'), side = $('.clock-side');
+    if (!card || !card.clientWidth) return;   // hidden (small phones)
+    var key = hm.textContent + '|' + $('#ap').textContent + '|' + $('#wd').textContent + '|' + dt.textContent + '|' + card.clientWidth;
+    if (!force && key === fitKey) return;
+    fitKey = key;
+    hm.style.fontSize = ''; dt.style.fontSize = '';
+    var cs = getComputedStyle(card);
+    var room = card.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - (parseFloat(cs.columnGap) || 0);
+    var over = time.scrollWidth + side.scrollWidth - room;
+    if (over <= 0) return;
+    var hmW = hm.getBoundingClientRect().width, base = parseFloat(getComputedStyle(hm).fontSize);
+    hm.style.fontSize = Math.max(base * 0.7, Math.floor(base * (hmW - over) / hmW)) + 'px';
+    over = time.scrollWidth + side.scrollWidth - room;
+    if (over > 0) {   // still too wide: the date gives a little too
+      var dtW = dt.getBoundingClientRect().width, dtBase = parseFloat(getComputedStyle(dt).fontSize);
+      dt.style.fontSize = Math.max(dtBase * 0.75, Math.floor(dtBase * (dtW - over) / dtW)) + 'px';
+    }
+  }
+  addEventListener('resize', function () { fitClock(true); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fitClock(true); });
   function drawProgress(d) {
     var dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     var day = pct(d - dayStart, 864e5);
