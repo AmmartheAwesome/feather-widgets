@@ -133,27 +133,22 @@
   checkCover();
 
   // ---------- move the widgets and change their glass, as in the app ----------
-  // Mouse: drag with 1:1 tracking from where you grabbed; on release the widget springs onto the nearest even edge
-  // or gap (projected from your flick) and never settles on the headline, the header or the island. A click (under
-  // 4 px of movement) cycles the glass: Frosted, Lighter, Text only, Solid. Touch: tap only, so scrolling always works.
-  // Positions are not saved; a window resize puts them back.
+  // Mouse: the widget follows the cursor exactly, from where you grabbed it, drawn once per screen frame, and stays
+  // exactly where you let go (only kept inside the window so it can't be lost). Nothing changes size on press, so it
+  // never twitches as a drag starts. A click (under 4 px of movement) cycles the glass: Frosted, Lighter, Text only,
+  // Solid. Touch: tap only, so scrolling always works. Positions are not saved; a resize keeps each widget on screen.
   (function () {
-    var S = window.Spring;
     var looks = [['', 'Frosted glass'], ['g-lighter', 'Lighter glass'], ['g-text', 'Text only'], ['g-solid', 'Solid']];
-    var GAP = 16, tipEl = document.createElement('div');
+    var tipEl = document.createElement('div');
     tipEl.className = 'glass-tip'; tipEl.setAttribute('aria-live', 'polite'); stage.appendChild(tipEl);
     var items = widgets.map(function (w) {
-      var it = { el: w.el, dx: 0, dy: 0, look: 0, sx: null, sy: null };
-      if (S) {
-        it.sx = new S.Spring({ onUpdate: function (v) { it.dx = v; apply(it); } });
-        it.sy = new S.Spring({ onUpdate: function (v) { it.dy = v; apply(it); } });
-      }
+      var it = { el: w.el, dx: 0, dy: 0, look: 0 };
       w.el.tabIndex = 0;
       w.el.setAttribute('role', 'button');
       w.el.title = finePointer ? 'Drag to move. Click to change the glass.' : 'Tap to change the glass.';
       return it;
     });
-    function apply(it) { it.el.style.transform = (it.dx || it.dy) ? 'translate3d(' + it.dx.toFixed(2) + 'px,' + it.dy.toFixed(2) + 'px,0)' : ''; queueCover(); }
+    function apply(it) { it.el.style.transform = (it.dx || it.dy) ? 'translate3d(' + it.dx + 'px,' + it.dy + 'px,0)' : ''; queueCover(); }
 
     function cycle(it) {
       var old = looks[it.look][0];
@@ -198,84 +193,67 @@
       }
     }
 
-    // where a widget may rest: inside the edge margin, clear of the header, the headline block, the island and the
-    // other widget (with the app's even gap)
-    function rects(it) {
-      var out = [], pad = function (r, p) { return { l: r.left - p, t: r.top - p, r: r.right + p, b: r.bottom + p }; };
-      var top = $('.top'), hero = $('.hero');
-      if (top) out.push(pad(top.getBoundingClientRect(), 8));
-      if (hero && !stage.classList.contains('past')) out.push(pad(hero.getBoundingClientRect(), GAP));
-      var pr = pill.getBoundingClientRect(); out.push({ l: pr.left - 24, t: pr.top - GAP, r: pr.right + 24, b: innerHeight });
-      items.forEach(function (o) { if (o !== it && getComputedStyle(o.el).display !== 'none') out.push(pad(o.el.getBoundingClientRect(), GAP)); });
-      return out;
+    // keeps a widget's offset inside the window (whole card visible), given where it sits with no offset
+    function clampInto(it, dx, dy, base) {
+      var w = base.width, h = base.height;
+      return {
+        x: Math.max(-base.left, Math.min(innerWidth - w - base.left, dx)),
+        y: Math.max(-base.top, Math.min(innerHeight - h - base.top, dy))
+      };
     }
-    function free(x, y, w, h, block) {
-      for (var i = 0; i < block.length; i++) { var b = block[i]; if (x < b.r - 0.5 && x + w > b.l + 0.5 && y < b.b - 0.5 && y + h > b.t + 0.5) return false; }
-      return true;
-    }
-    function settle(it, vx, vy) {
-      var r = it.el.getBoundingClientRect(), w = r.width, h = r.height;
-      var bx = r.left - it.dx, by = r.top - it.dy;               // where the widget sits with no offset
-      var m = $('.top').getBoundingClientRect().left;              // the page's edge margin
-      var minX = m, maxX = innerWidth - m - w, minY = m, maxY = innerHeight - m - h;
-      var px = r.left + (S ? S.project(vx, 0.99) : 0), py = r.top + (S ? S.project(vy, 0.99) : 0);
-      px = Math.max(minX, Math.min(maxX, px)); py = Math.max(minY, Math.min(maxY, py));
-      var block = rects(it);
-      // guides: the edge margin, and an even gap beside (or alignment with) everything in the way
-      var gx = [minX, maxX], gy = [minY, maxY];
-      block.forEach(function (b) { gx.push(b.l - w, b.r, b.l + GAP, b.r - GAP - w); gy.push(b.t - h, b.b, b.t + GAP, b.b - GAP - h); });
-      function snap(v, list) { var best = v, bd = 28; list.forEach(function (g) { var d = Math.abs(g - v); if (d < bd) { bd = d; best = g; } }); return best; }
-      var xs = [snap(px, gx)].concat(gx), ys = [snap(py, gy)].concat(gy);
-      var best = null, bd = Infinity;
-      xs.forEach(function (x) {
-        ys.forEach(function (y) {
-          if (x < minX - 0.5 || x > maxX + 0.5 || y < minY - 0.5 || y > maxY + 0.5) return;
-          if (!free(x, y, w, h, block)) return;
-          var d = Math.hypot(x - px, y - py);
-          if (d < bd) { bd = d; best = { x: x, y: y }; }
-        });
-      });
-      if (!best) best = { x: bx, y: by };                          // nowhere free: back home
-      var damping = Math.hypot(vx, vy) > 900 ? 0.82 : 1;           // a little bounce only after a flick
-      if (S) { it.sx.to(best.x - bx, { velocity: vx, damping: damping, response: 0.4 }); it.sy.to(best.y - by, { velocity: vy, damping: damping, response: 0.4 }); }
-      else { it.dx = best.x - bx; it.dy = best.y - by; apply(it); }
+    function baseRect(it) {   // the card's box with no offset applied
+      var r = it.el.getBoundingClientRect();
+      return { left: r.left - it.dx, top: r.top - it.dy, width: r.width, height: r.height };
     }
 
     items.forEach(function (it) {
       var el = it.el, id = null, sx0 = 0, sy0 = 0, ox = 0, oy = 0, moved = false, mouse = false;
-      var tx = S ? new S.VelocityTracker() : null, ty = S ? new S.VelocityTracker() : null;
+      var base = null, lastX = 0, lastY = 0, frame = 0;
+      function draw() {   // once per screen frame: the newest pointer position, 1:1
+        frame = 0;
+        var c = clampInto(it, ox + (lastX - sx0), oy + (lastY - sy0), base);
+        it.dx = c.x; it.dy = c.y; apply(it);
+      }
       el.addEventListener('pointerdown', function (e) {
         if (e.button !== 0 || id !== null) return;
         mouse = e.pointerType === 'mouse' && finePointer;
-        id = e.pointerId; sx0 = e.clientX; sy0 = e.clientY; moved = false;
+        id = e.pointerId; sx0 = lastX = e.clientX; sy0 = lastY = e.clientY; moved = false;
         el.classList.add('pressed');
         if (mouse) {
           e.preventDefault();
-          el.setPointerCapture(id);
-          if (S) { it.sx.stop(); it.sy.stop(); tx.reset(); ty.reset(); tx.add(it.dx); ty.add(it.dy); }   // grab it mid-flight
           ox = it.dx; oy = it.dy;
+          base = baseRect(it);
+          try { el.setPointerCapture(id); } catch (err) {}   // keeps the drag even when the cursor outruns the card
         }
       });
       el.addEventListener('pointermove', function (e) {
         if (e.pointerId !== id) return;
-        var mx = e.clientX - sx0, my = e.clientY - sy0;
-        if (!moved && Math.hypot(mx, my) >= 4) { moved = true; el.classList.remove('pressed'); if (mouse) { el.classList.add('dragging'); hideTip(); markHinted(); } }
-        if (!mouse || !moved) return;
-        it.dx = ox + mx; it.dy = oy + my; apply(it);
-        if (S) { tx.add(it.dx); ty.add(it.dy); }
+        lastX = e.clientX; lastY = e.clientY;
+        if (!moved && Math.hypot(lastX - sx0, lastY - sy0) >= 4) {
+          moved = true; el.classList.remove('pressed');
+          if (mouse) { el.classList.add('dragging'); hideTip(); markHinted(); }
+        }
+        if (mouse && moved && !frame) frame = requestAnimationFrame(draw);
       });
       function end(e, cancelled) {
         if (e.pointerId !== id) return;
         id = null;
+        if (frame) { cancelAnimationFrame(frame); frame = 0; if (mouse && moved) { lastX = e.clientX || lastX; lastY = e.clientY || lastY; draw(); } }
         el.classList.remove('pressed', 'dragging');
-        if (!moved && !cancelled) { cycle(it); return; }
-        if (mouse && moved) settle(it, S ? tx.velocity() : 0, S ? ty.velocity() : 0);
+        if (!moved && !cancelled) cycle(it);   // a click: change the glass; a drag simply stays where it was let go
       }
       el.addEventListener('pointerup', function (e) { end(e, false); });
       el.addEventListener('pointercancel', function (e) { end(e, true); });
       el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cycle(it); } });
     });
-    addEventListener('resize', function () { items.forEach(function (it) { if (it.sx) { it.sx.set(0); it.sy.set(0); } else { it.dx = it.dy = 0; apply(it); } }); });
+    // a resize keeps each moved widget where it is, nudged back inside the window if the window got smaller
+    addEventListener('resize', function () {
+      items.forEach(function (it) {
+        if (!it.dx && !it.dy) return;
+        if (getComputedStyle(it.el).display === 'none') { it.dx = it.dy = 0; apply(it); return; }
+        var c = clampInto(it, it.dx, it.dy, baseRect(it)); it.dx = c.x; it.dy = c.y; apply(it);
+      });
+    });
   })();
 
   // ---------- the island ----------
